@@ -1,4 +1,4 @@
-const WORKER_URL = "https://yandex-gpt-proxy.skudatin.workers.dev/";
+const WORKER_URL = "https://yandex-gpt-proxy.skudatin.workers.dev";
 
 let mediaRecorder;
 let audioChunks = [];
