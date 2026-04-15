@@ -12,7 +12,12 @@ btn.onclick = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      mediaRecorder = new MediaRecorder(stream);
+      // Явно запрашиваем поддерживаемый формат (webm opus)
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm"; // fallback
+
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
       audioChunks = [];
 
       mediaRecorder.ondataavailable = (e) => {
@@ -45,7 +50,8 @@ btn.onclick = async () => {
 async function processAudio() {
   console.log("processing audio...");
 
-  const blob = new Blob(audioChunks, { type: "audio/ogg" });
+  // ✅ ИСПРАВЛЕНО: используем тип webm/opus (Yandex понимает как oggopus)
+  const blob = new Blob(audioChunks, { type: "audio/webm;codecs=opus" });
 
   console.log("blob size:", blob.size);
 
@@ -68,13 +74,13 @@ async function processAudio() {
     console.log("STT status:", sttRes.status);
 
     const sttData = await sttRes.json();
-    console.log("STT response:", sttData);
+    console.log("STT response:", sttData); // теперь должно быть не пусто
 
     const text = sttData.result || "";
     document.getElementById("text").innerText = text;
 
     if (!text) {
-      alert("Не распознано");
+      alert("Не распознано. Проверьте микрофон, говорите громче/дольше (3+ сек)");
       btn.textContent = "🎤 Start Recording";
       return;
     }
