@@ -1,75 +1,118 @@
-const WORKER_URL = "https://YOUR-WORKER.workers.dev"; // ← вставишь сюда
+const WORKER_URL = "https://YOUR-WORKER.workers.dev";
 
 let mediaRecorder;
 let audioChunks = [];
+let isRecording = false;
 
 const btn = document.getElementById("recordBtn");
 
+// ===== BUTTON =====
 btn.onclick = async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  if (!isRecording) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  mediaRecorder = new MediaRecorder(stream);
-  audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
 
-  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.ondataavailable = (e) => {
+        console.log("chunk:", e.data.size);
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
 
-  mediaRecorder.onstop = processAudio;
+      mediaRecorder.onstop = async () => {
+        console.log("STOPPED, chunks:", audioChunks.length);
+        await processAudio();
+      };
 
-  mediaRecorder.start();
+      mediaRecorder.start();
+      isRecording = true;
 
-  btn.textContent = "⏹ Stop";
-
-  btn.onclick = () => {
+      btn.textContent = "🎙 Recording...";
+    } catch (err) {
+      alert("Нет доступа к микрофону");
+      console.error(err);
+    }
+  } else {
     mediaRecorder.stop();
-    btn.textContent = "🎤 Start Recording";
-    btn.onclick = startRecording;
-  };
+    isRecording = false;
+
+    btn.textContent = "⏳ Processing...";
+  }
 };
 
-async function startRecording() {}
-
+// ===== PROCESS AUDIO =====
 async function processAudio() {
-  const blob = new Blob(audioChunks, { type: "audio/webm" });
+  console.log("processing audio...");
+
+  const blob = new Blob(audioChunks, { type: "audio/ogg" });
+
+  console.log("blob size:", blob.size);
+
+  if (blob.size === 0) {
+    alert("Аудио пустое");
+    btn.textContent = "🎤 Start Recording";
+    return;
+  }
 
   const formData = new FormData();
   formData.append("audio", blob);
 
-  // ===== STT =====
-  const sttRes = await fetch(`${WORKER_URL}/stt`, {
-    method: "POST",
-    body: formData
-  });
+  try {
+    // ===== STT =====
+    const sttRes = await fetch(`${WORKER_URL}/stt`, {
+      method: "POST",
+      body: formData
+    });
 
-  const sttData = await sttRes.json();
-  const text = sttData.result || "";
+    console.log("STT status:", sttRes.status);
 
-  document.getElementById("text").innerText = text;
+    const sttData = await sttRes.json();
+    console.log("STT response:", sttData);
 
-  // ===== GPT =====
-  const gptRes = await fetch(`${WORKER_URL}/gpt`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ text })
-  });
+    const text = sttData.result || "";
+    document.getElementById("text").innerText = text;
 
-  const data = await gptRes.json();
+    if (!text) {
+      alert("Не распознано");
+      btn.textContent = "🎤 Start Recording";
+      return;
+    }
 
-  document.getElementById("amount").value = data.amount || "";
-  document.getElementById("wallet").value = data.wallet || "";
-  document.getElementById("category").value = data.category || "";
+    // ===== GPT =====
+    const gptRes = await fetch(`${WORKER_URL}/gpt`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ text })
+    });
 
-  document.getElementById(
-    "confirmation"
-  ).innerText = `Вы сказали: ${data.amount}, ${data.wallet}, ${data.category}. Всё верно?`;
+    const data = await gptRes.json();
+    console.log("GPT:", data);
+
+    document.getElementById("amount").value = data.amount || "";
+    document.getElementById("wallet").value = data.wallet || "";
+    document.getElementById("category").value = data.category || "";
+
+    document.getElementById(
+      "confirmation"
+    ).innerText = `Вы сказали: ${data.amount}, ${data.wallet}, ${data.category}. Всё верно?`;
+
+    btn.textContent = "🎤 Start Recording";
+
+  } catch (err) {
+    console.error("ERROR:", err);
+    alert("Ошибка — смотри console (F12)");
+    btn.textContent = "🎤 Start Recording";
+  }
 }
 
-// buttons
+// ===== BUTTONS =====
 document.getElementById("confirmBtn").onclick = () => {
   alert("Сохранено!");
 };
 
 document.getElementById("editBtn").onclick = () => {
-  alert("Отредактируйте поля");
+  alert("Отредактируйте поля вручную");
 };
